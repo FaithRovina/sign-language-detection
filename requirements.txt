@@ -1,1 +1,12 @@
-opencv-python
+opencv-python>=4.5.1.48
+numpy>=1.19.3
+Pillow>=8.0.0
+torch>=1.7.0
+torchvision>=0.8.1
+streamlit>=1.0.0
+pyyaml>=5.3.1
+tqdm>=4.56.0
+matplotlib>=3.3.3
+seaborn>=0.11.1
+pandas>=1.2.0
+gitpython>=3.1.14

@@ -1,97 +1,120 @@
+import pathlib
+import platform
+
+# Fix for Windows path issue
+if platform.system() == 'Windows':
+    pathlib.PosixPath = pathlib.WindowsPath
+
 import streamlit as st
+import torch
 import cv2
 import numpy as np
 from PIL import Image
-import torch
-from pathlib import Path
+import tempfile
+import os
 
-# Add yolov5 to path
-import sys
-sys.path.append('yolov5')  # path to the cloned repo
+# Set page config
+st.set_page_config(
+    page_title="Sign Language Detection",
+    page_icon="👋",
+    layout="wide"
+)
 
-# Load the YOLOv5 model
-from models.experimental import attempt_load
-
-# Set device (GPU if available, otherwise CPU)
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-model = attempt_load('best.pt', device=device)
-
-# Get class names
-with open('yolov5/data/sign_data.yaml', 'r') as f:
-    classes = yaml.safe_load(f)['names']
-
+# Title and description
 st.title("Sign Language Detection")
+st.write("Detect sign language in real-time or from uploaded videos")
 
-# Upload image
-uploaded_file = st.file_uploader("Choose an image", type=["jpg", "png", "jpeg"])
+# Sidebar for model options
+st.sidebar.title("Options")
+confidence_threshold = st.sidebar.slider("Confidence Threshold", 0.0, 1.0, 0.25, 0.01)
+iou_threshold = st.sidebar.slider("IOU Threshold", 0.0, 1.0, 0.45, 0.01)
 
-if uploaded_file is not None:
-    # Convert the file to an opencv image
-    file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
-    opencv_image = cv2.imdecode(file_bytes, 1)
-    
-    # Convert the image to RGB (OpenCV uses BGR by default)
-    opencv_image = cv2.cvtColor(opencv_image, cv2.COLOR_BGR2RGB)
-    
-    # Create a PIL image from the opencv image
-    image = Image.fromarray(opencv_image)
-    
-    # Display the image
-    st.image(image, caption='Uploaded Image', use_column_width=True)
+# Load YOLOv5 model from PyTorch Hub
+@st.cache_resource
+def load_model():
+    # Clear cache and force reload
+    torch.hub._validate_not_a_forked_repo = lambda a, b, c: True
+    model = torch.hub.load('ultralytics/yolov5', 'custom', path='best.pt', force_reload=True, trust_repo=True)
+    return model
+
+try:
+    model = load_model()
+except Exception as e:
+    st.error(f"Error loading model: {str(e)}")
+    st.stop()
+model.conf = confidence_threshold
+def process_frame(frame):
+    # Convert frame to RGB (YOLOv5 expects RGB)
+    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     
     # Run inference
-    if st.button('Detect Signs'):
-        # Convert PIL image to numpy array
-        img_array = np.array(image)
-        
-        # Run inference
-        results = model(img_array)
-        
-        # Display results
-        st.image(results.render(), caption='Detected Signs', use_column_width=True)
-        
-        # Display detection details
-        st.write("Detection Details:")
-        for detection in results.pandas().xyxy[0].itertuples():
-            st.write(f"Class: {detection.name}, Confidence: {detection.confidence:.2f}")
-
-# Add a video upload option
-uploaded_video = st.file_uploader("Choose a video", type=["mp4", "avi"])
-
-if uploaded_video is not None:
-    video_bytes = uploaded_video.read()
+    results = model(frame_rgb)
     
-    # Create a temporary file for the video
-    with open("temp_video.mp4", "wb") as f:
-        f.write(video_bytes)
+    # Render results on frame
+    rendered_frame = results.render()[0]
     
-    # Run inference on video
-    if st.button('Process Video'):
-        cap = cv2.VideoCapture("temp_video.mp4")
+    # Convert back to BGR for display
+    return cv2.cvtColor(rendered_frame, cv2.COLOR_RGB2BGR)
+
+# Main app
+def main():
+    st.sidebar.title("Input Source")
+    app_mode = st.sidebar.radio("Choose input source:", ["Webcam", "Upload Video"])
+    
+    if app_mode == "Webcam":
+        st.header("Webcam Live Feed")
+        run_webcam()
+    else:
+        st.header("Upload Video")
+        run_video_upload()
+
+def run_webcam():
+    run = st.checkbox('Start Webcam')
+    FRAME_WINDOW = st.image([])
+    
+    cap = cv2.VideoCapture(0)
+    
+    while run:
+        ret, frame = cap.read()
+        if not ret:
+            st.error("Failed to capture video from webcam.")
+            break
+            
+        # Process frame
+        processed_frame = process_frame(frame)
         
-        # Create output video writer
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-        out = cv2.VideoWriter('output.mp4', fourcc, 20.0, (int(cap.get(3)), int(cap.get(4))))
+        # Display the processed frame
+        FRAME_WINDOW.image(processed_frame, channels="BGR")
+    
+    cap.release()
+
+def run_video_upload():
+    uploaded_file = st.file_uploader("Upload a video", type=["mp4", "mov", "avi"])
+    
+    if uploaded_file is not None:
+        # Save uploaded file to a temporary file
+        tfile = tempfile.NamedTemporaryFile(delete=False)
+        tfile.write(uploaded_file.read())
+        
+        # Open video file
+        cap = cv2.VideoCapture(tfile.name)
+        
+        # Create placeholders
+        frame_placeholder = st.empty()
         
         while cap.isOpened():
             ret, frame = cap.read()
             if not ret:
                 break
                 
-            # Convert frame to RGB
-            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            # Process frame
+            processed_frame = process_frame(frame)
             
-            # Run inference
-            results = model(frame_rgb)
-            
-            # Get the rendered frame
-            rendered_frame = results.render()[0]
-            
-            # Write the frame to output video
-            out.write(cv2.cvtColor(rendered_frame, cv2.COLOR_RGB2BGR))
+            # Display the processed frame
+            frame_placeholder.image(processed_frame, channels="BGR")
         
         cap.release()
-        out.release()
-        
-        # Display the processed video
-        st.video("output.mp4")
+        os.unlink(tfile.name)
+
+if __name__ == "__main__":
+    main()
