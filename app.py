@@ -207,13 +207,31 @@ def chat_interface():
     st.markdown("---")
     chat_container = st.container()
     
+    # Define speaker colors
+    speaker_colors = {
+        "Person 1": {
+            "icon": "#4CAF50",  # Green
+            "text": "#2E7D32"  # Darker green
+        },
+        "Person 2": {
+            "icon": "#2196F3",  # Blue
+            "text": "#1565C0"  # Darker blue
+        }
+    }
+    
     with chat_container:
         for message in st.session_state.chat_history:
             if message["role"] == "system":
                 st.markdown(f"*{message['content']}*")
             else:
+                speaker = message["speaker"]
+                color = speaker_colors.get(speaker, {"icon": "#9E9E9E", "text": "#424242"})
+                
                 with st.chat_message(message["role"]):
-                    st.markdown(f"**{message['speaker']}**: {message['content']}")
+                    st.markdown(
+                        f"<span style='color: {color['text']}; font-weight: bold;'>{speaker}:</span> {message['content']}",
+                        unsafe_allow_html=True
+                    )
     
     # Chat controls
     col1, col2, col3 = st.columns([3, 2, 2])
@@ -242,38 +260,42 @@ def chat_interface():
             st.session_state.current_speaker = "Person 2" if st.session_state.current_speaker == "Person 1" else "Person 1"
             st.rerun()
     
-    # Current speaker indicator with theme-aware styling
-    st.markdown("""
-    <style>
-        .speaker-indicator {
-            background-color: var(--background-color);
-            color: var(--text-color);
+    # Current speaker indicator with theme-aware styling and dynamic colors
+    speaker_colors = {
+        "Person 1": {
+            "icon": "#4CAF50",  # Green
+            "text": "#2E7D32"   # Darker green
+        },
+        "Person 2": {
+            "icon": "#2196F3",  # Blue
+            "text": "#1565C0"   # Darker blue
+        }
+    }
+    
+    current_speaker = st.session_state.current_speaker
+    speaker_color = speaker_colors.get(current_speaker, {"icon": "#9E9E9E", "text": "#424242"})
+    
+    # Create a container for the speaker indicator with inline styles
+    st.markdown(
+        f"""
+        <div style="
+            background-color: {'#f0f2f6' if not st.get_option('theme.base') == 'dark' else '#1e1e1e'};
+            color: {'#31333F' if not st.get_option('theme.base') == 'dark' else '#f0f2f6'};
             padding: 12px 16px;
             border-radius: 8px;
             margin: 12px 0;
-            border: 1px solid var(--border-color);
+            border: 1px solid {'#e6e9ef' if not st.get_option('theme.base') == 'dark' else '#2b2b2b'};
             display: flex;
             align-items: center;
             gap: 10px;
             box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        }
-        .speaker-icon {
-            font-size: 1.2em;
-            color: #4CAF50;  /* Green color for the mic icon */
-        }
-        .speaker-name {
-            font-weight: bold;
-            color: var(--primary-color);
-        }
-    </style>
-    """, unsafe_allow_html=True)
-    
-    st.markdown(f"""
-    <div class="speaker-indicator">
-        <span class="speaker-icon">🎤</span>
-        <span>Now speaking: <span class="speaker-name">{st.session_state.current_speaker}</span></span>
-    </div>
-    """, unsafe_allow_html=True)
+        ">
+            <span style="font-size: 1.2em; color: {speaker_color['icon']};">🎤</span>
+            <span>Now speaking: <span style="font-weight: bold; color: {speaker_color['text']};">{current_speaker}</span></span>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
     
     # Additional controls
     col_clear, col_back = st.columns(2)
