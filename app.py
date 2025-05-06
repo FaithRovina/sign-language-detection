@@ -174,6 +174,121 @@ def transcribe_audio(audio_data, client):
         st.error(f"Error in live audio transcription: {str(e)}")
         return ""
 
+def chat_interface():
+    st.title("💬 Two-Person Chat")
+    
+    # Initialize chat history if not exists
+    if 'chat_history' not in st.session_state:
+        st.session_state.chat_history = []
+    if 'current_speaker' not in st.session_state:
+        st.session_state.current_speaker = "Person 1"
+    if 'show_help' not in st.session_state:
+        st.session_state.show_help = False
+    
+    # Help toggle button
+    if st.button("❓ Help"):
+        st.session_state.show_help = not st.session_state.show_help
+    
+    # Display help information
+    if st.session_state.show_help:
+        with st.expander("How to use this chat"):
+            st.markdown("""
+            **Instructions for Two-Person Chat**
+            
+            1. **Person 1** and **Person 2** take turns using this device
+            2. The current speaker is highlighted in blue
+            3. Type your message and press Enter or click Send
+            4. Click "Switch Speaker" to change turns
+            5. Use the "Clear Chat" button to start a new conversation
+            6. Click "❓" again to hide these instructions
+            """)
+    
+    # Display chat messages with speaker indicators
+    st.markdown("---")
+    chat_container = st.container()
+    
+    with chat_container:
+        for message in st.session_state.chat_history:
+            if message["role"] == "system":
+                st.markdown(f"*{message['content']}*")
+            else:
+                with st.chat_message(message["role"]):
+                    st.markdown(f"**{message['speaker']}**: {message['content']}")
+    
+    # Chat controls
+    col1, col2, col3 = st.columns([3, 2, 2])
+    
+    with col1:
+        # Chat input
+        prompt = st.text_input("Type your message here...", 
+                             key=f"chat_input_{st.session_state.current_speaker}",
+                             label_visibility="collapsed")
+    
+    with col2:
+        st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)  # Spacer
+        if st.button("✉️ Send"):
+            if prompt.strip():
+                # Add message to history
+                st.session_state.chat_history.append({
+                    "role": "user",
+                    "speaker": st.session_state.current_speaker,
+                    "content": prompt
+                })
+                st.rerun()
+    
+    with col3:
+        st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)  # Spacer
+        if st.button("🔄 Switch Speaker"):
+            st.session_state.current_speaker = "Person 2" if st.session_state.current_speaker == "Person 1" else "Person 1"
+            st.rerun()
+    
+    # Current speaker indicator with theme-aware styling
+    st.markdown("""
+    <style>
+        .speaker-indicator {
+            background-color: var(--background-color);
+            color: var(--text-color);
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin: 12px 0;
+            border: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .speaker-icon {
+            font-size: 1.2em;
+            color: #4CAF50;  /* Green color for the mic icon */
+        }
+        .speaker-name {
+            font-weight: bold;
+            color: var(--primary-color);
+        }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    st.markdown(f"""
+    <div class="speaker-indicator">
+        <span class="speaker-icon">🎤</span>
+        <span>Now speaking: <span class="speaker-name">{st.session_state.current_speaker}</span></span>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Additional controls
+    col_clear, col_back = st.columns(2)
+    
+    with col_clear:
+        if st.button("🗑️ Clear Chat"):
+            st.session_state.chat_history = []
+            st.session_state.current_speaker = "Person 1"
+            st.rerun()
+    
+    with col_back:
+        if st.button("⬅️ Back to Main Menu"):
+            st.session_state.page = "main"
+            st.rerun()
+
 def main_menu():
     st.title("Accessibility Assistant")
     st.write("Choose a mode to get started:")
@@ -181,7 +296,8 @@ def main_menu():
     # Clear any existing sidebar content
     st.sidebar.empty()
     
-    col1, col2 = st.columns(2)
+    # Create three columns for the buttons
+    col1, col2, col3 = st.columns(3)
     
     with col1:
         if st.button("🎤 Speech Recognition", use_container_width=True):
@@ -189,9 +305,25 @@ def main_menu():
             st.rerun()
     
     with col2:
-        if st.button("👋 Sign Language Detection", use_container_width=True):
+        if st.button("👋 Sign Language", use_container_width=True):
             st.session_state.page = "sign_language"
             st.rerun()
+            
+    with col3:
+        if st.button("💬 Text Chat", use_container_width=True):
+            st.session_state.page = "chat"
+            st.rerun()
+    
+    # Add some space
+    st.markdown("<br><br>", unsafe_allow_html=True)
+    
+    # Add description of features
+    with st.expander("ℹ️ About the Features"):
+        st.markdown("""
+        - **🎤 Speech Recognition**: Convert your speech to text in real-time
+        - **👋 Sign Language**: Detect sign language using your webcam or upload a video
+        - **💬 Two-Person Chat**: Enable text-based communication between two people using the same device
+        """)
 
 def transcribe_audio_file(audio_file, client):
     try:
@@ -335,6 +467,8 @@ def main():
         speech_page()
     elif st.session_state.page == "sign_language":
         sign_language_page()
+    elif st.session_state.page == "chat":
+        chat_interface()
 
 def run_webcam():
     # Get current confidence and IOU thresholds from session state
