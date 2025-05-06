@@ -494,7 +494,7 @@ def main():
 
 def run_webcam():
     # Get current confidence and IOU thresholds from session state
-    conf_threshold = st.session_state.get('conf_thresh_sign', 0.40)  # Increased default confidence
+    conf_threshold = st.session_state.get('conf_thresh_sign', 0.25)
     iou_threshold = st.session_state.get('iou_thresh_sign', 0.45)
     
     # Add performance options
@@ -502,34 +502,16 @@ def run_webcam():
     frame_skip = st.sidebar.slider("Frame Skip", 1, 5, 2, 1,
                                  help="Process every nth frame to improve performance")
     
-    # Add model settings
-    model_size = st.sidebar.selectbox(
-        "Model Size",
-        ["nano", "small", "medium"],
-        index=1,
-        help="Larger models are more accurate but slower"
-    )
-    
-    # Load appropriate model based on selection
+    # Load the model
     @st.cache_resource
-    def load_model(size="small"):
+    def load_model():
         # Clear cache and force reload
         torch.hub._validate_not_a_forked_repo = lambda a, b, c: True
         model = torch.hub.load('ultralytics/yolov5', 'custom', path='best.pt', force_reload=True, trust_repo=True)
-        
-        # Set model parameters based on size
-        if size == "nano":
-            model = model.autoshape()  # Smallest model
-            model.conf = max(conf_threshold, 0.5)  # Higher confidence threshold for smaller model
-        elif size == "medium":
-            model.conf = conf_threshold
-            model = model.fuse()  # Fuse layers for better performance
-        else:  # small
-            model.conf = conf_threshold
-            
+        model.conf = conf_threshold
         return model
     
-    model = load_model(model_size)
+    model = load_model()
     
     run = st.checkbox('Start Webcam', key='webcam_checkbox')
     FRAME_WINDOW = st.image([])
@@ -544,9 +526,6 @@ def run_webcam():
     frame_count = 0
     fps = st.empty()
     
-    # Warm-up the model
-    _ = model(torch.zeros(1, 3, 320, 320).to('cuda' if torch.cuda.is_available() else 'cpu'))
-    
     try:
         while run:
             start_time = time.time()
@@ -560,14 +539,8 @@ def run_webcam():
             
             # Only process every nth frame
             if frame_count % frame_skip == 0:
-                # Resize frame for faster processing
-                small_frame = cv2.resize(frame, (0, 0), fx=0.5, fy=0.5)
-                
                 # Process frame with current thresholds
-                processed_frame = process_frame(small_frame, model.conf, iou_threshold)
-                
-                # Resize back to original size for display
-                processed_frame = cv2.resize(processed_frame, (frame.shape[1], frame.shape[0]))
+                processed_frame = process_frame(frame, conf_threshold, iou_threshold)
                 
                 # Calculate and display FPS
                 fps_text = f"FPS: {1.0 / (time.time() - start_time):.1f}"
@@ -593,30 +566,66 @@ def run_video_upload():
     
     uploaded_file = st.file_uploader("Upload a video", type=["mp4", "mov", "avi"], key="video_uploader")
     
-    if uploaded_file is not None:
-        # Save uploaded file to a temporary file
-        tfile = tempfile.NamedTemporaryFile(delete=False)
-        tfile.write(uploaded_file.read())
-        
-        # Open video file
-        cap = cv2.VideoCapture(tfile.name)
-        
-        # Create placeholders
-        frame_placeholder = st.empty()
-        
-        while cap.isOpened():
-            ret, frame = cap.read()
-            if not ret:
-                break
-                
-            # Process frame with current thresholds
-            processed_frame = process_frame(frame, conf_threshold, iou_threshold)
+    # Initialize variables outside try block for finally
+    cap = None
+    temp_file_path = None
+    
+    try:
+        if uploaded_file is not None:
+            # Create a temporary file with proper extension
+            file_ext = os.path.splitext(uploaded_file.name)[1]
+            with tempfile.NamedTemporaryFile(delete=False, suffix=file_ext) as tfile:
+                tfile.write(uploaded_file.getbuffer())
+                temp_file_path = tfile.name
             
-            # Display the processed frame
-            frame_placeholder.image(processed_frame, channels="BGR")
+            # Open video file
+            cap = cv2.VideoCapture(temp_file_path)
+            
+            if not cap.isOpened():
+                st.error("Error: Could not open video file.")
+                return
+                
+            # Get video properties
+            fps = cap.get(cv2.CAP_PROP_FPS)
+            if fps <= 0:
+                fps = 30  # Default FPS if not available
+            
+            # Create placeholders
+            frame_placeholder = st.empty()
+            stop_button = st.button("Stop Video")
+            
+            while cap.isOpened() and not stop_button:
+                ret, frame = cap.read()
+                if not ret:
+                    break
+                    
+                # Process frame with current thresholds
+                processed_frame = process_frame(frame, conf_threshold, iou_threshold)
+                
+                # Display the processed frame
+                frame_placeholder.image(processed_frame, channels="BGR")
+                
+                # Add a small delay to control playback speed
+                time.sleep(1.0 / fps)
+                
+                # Check if the stop button was pressed
+                if stop_button:
+                    break
+    
+    except Exception as e:
+        st.error(f"An error occurred while processing the video: {str(e)}")
+    
+    finally:
+        # Release resources
+        if cap is not None:
+            cap.release()
         
-        cap.release()
-        os.unlink(tfile.name)
+        # Clean up temporary file if it exists
+        if temp_file_path is not None and os.path.exists(temp_file_path):
+            try:
+                os.unlink(temp_file_path)
+            except Exception as e:
+                st.warning(f"Could not delete temporary file: {str(e)}")
 
 if __name__ == "__main__":
     main()
