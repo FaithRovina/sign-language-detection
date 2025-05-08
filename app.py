@@ -386,12 +386,102 @@ def transcribe_audio_file(audio_file, client):
         st.error(f"Error in file transcription: {str(e)}")
         return ""
 
+def transcribe_audio_file(audio_file, client):
+    try:
+        # Read the audio file
+        audio_content = audio_file.read()
+        
+        # Check file type and set encoding
+        file_extension = audio_file.name.split('.')[-1].lower()
+        
+        # Map common audio formats to their respective encodings
+        encoding_map = {
+            'wav': speech.RecognitionConfig.AudioEncoding.LINEAR16,
+            'flac': speech.RecognitionConfig.AudioEncoding.FLAC,
+            'mp3': speech.RecognitionConfig.AudioEncoding.MP3,
+            'ogg': speech.RecognitionConfig.AudioEncoding.OGG_OPUS,
+        }
+        
+        # Default to LINEAR16 if format not recognized
+        encoding = encoding_map.get(file_extension, speech.RecognitionConfig.AudioEncoding.ENCODING_UNSPECIFIED)
+        
+        # Create audio object
+        audio = speech.RecognitionAudio(content=audio_content)
+        
+        # Create config
+        config = speech.RecognitionConfig(
+            encoding=encoding,
+            sample_rate_hertz=RATE,
+            language_code="en-US",
+            enable_automatic_punctuation=True,
+        )
+        
+        # Make the API request
+        response = client.recognize(config=config, audio=audio)
+        
+        # Combine all results
+        return ' '.join([result.alternatives[0].transcript for result in response.results])
+    except Exception as e:
+        st.error(f"Error in file transcription: {str(e)}")
+        return ""
+
 def speech_page():
     st.title("🎤 Speech Recognition")
-    
-    # Clear any existing sidebar content
+
+    # Custom CSS for even bigger font size (body and instructions)
+    st.markdown(
+        '''<style>
+        html, body, [class^="css"]  {
+            font-size: 24px !important;
+        }
+        .stTextInput input, .stTextArea textarea, .stButton button, .stTabs [data-baseweb="tab"] {
+            font-size: 24px !important;
+        }
+        .instructions-block {
+            background: #f1f3f6;
+            border-radius: 12px;
+            padding: 1.5em;
+            margin-bottom: 1.5em;
+            font-size: 28px !important;
+            color: #222;
+        }
+        .help-toggle {
+            cursor: pointer;
+            font-size: 2.2em;
+            margin-bottom: 0.5em;
+            color: #1976d2;
+            background: none;
+            border: none;
+            outline: none;
+        }
+        </style>''',
+        unsafe_allow_html=True
+    )
+
+    # --- Custom Help/Instructions Toggle ---
+    if 'show_instructions' not in st.session_state:
+        st.session_state.show_instructions = False
+
+    help_col, _ = st.columns([1, 8])
+    with help_col:
+        if st.button('❓', key='help_toggle', help='Show/Hide Instructions', use_container_width=False):
+            st.session_state.show_instructions = not st.session_state.show_instructions
+
+    if st.session_state.show_instructions:
+        st.markdown(
+            '''<div class="instructions-block">
+            <b>How to Use:</b><br>
+            - <b>Record Audio:</b> Click "Start Recording" to begin, then "Stop Recording" to finish and transcribe.<br>
+            - <b>Upload Audio File:</b> Upload a supported audio file and click "Transcribe Audio File".<br>
+            Your transcription will appear below.<br>
+            Click the ❓ again to hide these instructions.
+            </div>''',
+            unsafe_allow_html=True
+        )
+
+    # Hide sidebar for this page
     st.sidebar.empty()
-    
+
     # Add back button
     if st.button("⬅️ Back to Main Menu"):
         st.session_state.page = "main"
@@ -450,8 +540,9 @@ def speech_page():
     st.subheader("Transcription")
     st.text_area("Transcription", 
                 value=st.session_state.transcription, 
-                height=200,
-                key="transcription_area")
+                height=200,)
+
+
 
 def sign_language_page():
     st.title("👋 Sign Language Detection")
@@ -461,14 +552,13 @@ def sign_language_page():
         st.session_state.page = "main"
         st.rerun()
     
-    # Model options in sidebar
-    st.sidebar.title("Model Options")
-    confidence_threshold = st.sidebar.slider("Confidence Threshold", 0.0, 1.0, 0.25, 0.01, key="conf_thresh_sign")
-    iou_threshold = st.sidebar.slider("IOU Threshold", 0.0, 1.0, 0.45, 0.01, key="iou_thresh_sign")
+    # --- Main page controls ---
+    st.markdown("<b>Model Options</b>", unsafe_allow_html=True)
+    confidence_threshold = st.slider("Confidence Threshold", 0.0, 1.0, 0.25, 0.01, key="conf_thresh_sign")
+    iou_threshold = st.slider("IOU Threshold", 0.0, 1.0, 0.45, 0.01, key="iou_thresh_sign")
     
-    # Input source selection
-    st.sidebar.title("Input Source")
-    app_mode = st.sidebar.radio("Choose input source:", ["Webcam", "Upload Video"], key="input_source")
+    st.markdown("<b>Input Source</b>", unsafe_allow_html=True)
+    app_mode = st.radio("Choose input source:", ["Webcam", "Upload Video"], key="input_source", horizontal=True)
     
     if app_mode == "Webcam":
         st.header("Webcam Live Feed")
@@ -476,6 +566,7 @@ def sign_language_page():
     else:
         st.header("Upload Video")
         run_video_upload()
+
 
 def main():
     # Initialize session state for page navigation
@@ -558,6 +649,7 @@ def run_webcam():
     finally:
         cap.release()
         cv2.destroyAllWindows()
+
 
 def run_video_upload():
     # Get current confidence and IOU thresholds from session state
