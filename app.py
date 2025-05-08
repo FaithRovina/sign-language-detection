@@ -633,16 +633,13 @@ def visual_aid_page():
         st.warning("No pictograms found in this category.")
         return
 
-    # Show all pictograms as buttons, using full filename for unique keys
+    # Show pictogram names in a dropdown (selectbox)
     st.markdown('<div class="visual-aid-category">Select a pictogram:</div>', unsafe_allow_html=True)
-    cols = st.columns(4)
-    for idx, img_path in enumerate(image_files):
-        col = cols[idx % 4]
-        img_name = os.path.splitext(os.path.basename(img_path))[0]
-        img_file = os.path.basename(img_path)
-        # Button with unique key using full filename
-        if col.button(img_name, key=f"picbtn_{selected_category}_{img_file}", use_container_width=True):
-            st.session_state.visual_aid_selected = img_path
+    names = [os.path.splitext(os.path.basename(f))[0] for f in image_files]
+    name_to_path = {os.path.splitext(os.path.basename(f))[0]: f for f in image_files}
+
+    selected_name = st.selectbox("Pictogram Name", names, key=f"picdropdown_{selected_category}")
+    st.session_state.visual_aid_selected = name_to_path[selected_name]
 
     # Show the selected image below, centered and large
     if st.session_state.visual_aid_selected:
