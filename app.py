@@ -548,25 +548,34 @@ def sign_language_page():
     st.title("👋 Sign Language Detection")
     
     # Add back button
-    if st.button("⬅️ Back to Main Menu"):
+    if st.button("⬅️ Back to Main Menu", key="back_btn", use_container_width=True):
         st.session_state.page = "main"
         st.rerun()
-    
+
     # --- Main page controls ---
-    st.markdown("<b>Model Options</b>", unsafe_allow_html=True)
+    st.markdown("<h3 style='font-size:1.5em;'>Model Options</h3>", unsafe_allow_html=True)
     confidence_threshold = st.slider("Confidence Threshold", 0.0, 1.0, 0.25, 0.01, key="conf_thresh_sign")
     iou_threshold = st.slider("IOU Threshold", 0.0, 1.0, 0.45, 0.01, key="iou_thresh_sign")
+    frame_skip = st.slider("Frame Skip", 1, 5, 2, 1, help="Process every nth frame to improve performance", key="frame_skip_sign")
     
-    st.markdown("<b>Input Source</b>", unsafe_allow_html=True)
+    st.markdown("<h3 style='font-size:1.5em;'>Input Source</h3>", unsafe_allow_html=True)
     app_mode = st.radio("Choose input source:", ["Webcam", "Upload Video"], key="input_source", horizontal=True)
     
     if app_mode == "Webcam":
         st.header("Webcam Live Feed")
-        run_webcam()
+        run_webcam(confidence_threshold, iou_threshold, frame_skip)
     else:
         st.header("Upload Video")
-        run_video_upload()
+        run_video_upload(confidence_threshold, iou_threshold, frame_skip)
 
+
+# Hide Streamlit sidebar and hamburger menu globally
+st.markdown("""
+    <style>
+    [data-testid="stSidebar"], [data-testid="stSidebarNav"] {display: none !important;}
+    [data-testid="collapsedControl"] {display: none !important;}
+    </style>
+""", unsafe_allow_html=True)
 
 def main():
     # Initialize session state for page navigation
@@ -583,16 +592,7 @@ def main():
     elif st.session_state.page == "chat":
         chat_interface()
 
-def run_webcam():
-    # Get current confidence and IOU thresholds from session state
-    conf_threshold = st.session_state.get('conf_thresh_sign', 0.25)
-    iou_threshold = st.session_state.get('iou_thresh_sign', 0.45)
-    
-    # Add performance options
-    st.sidebar.subheader("Performance Settings")
-    frame_skip = st.sidebar.slider("Frame Skip", 1, 5, 2, 1,
-                                 help="Process every nth frame to improve performance")
-    
+def run_webcam(conf_threshold, iou_threshold, frame_skip):
     # Load the model
     @st.cache_resource
     def load_model():
@@ -651,7 +651,7 @@ def run_webcam():
         cv2.destroyAllWindows()
 
 
-def run_video_upload():
+def run_video_upload(conf_threshold, iou_threshold, frame_skip):
     # Get current confidence and IOU thresholds from session state
     conf_threshold = st.session_state.get('conf_thresh_sign', 0.25)
     iou_threshold = st.session_state.get('iou_thresh_sign', 0.45)
