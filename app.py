@@ -315,36 +315,35 @@ def main_menu():
     st.title("Accessibility Assistant")
     st.write("Choose a mode to get started:")
     
-    # Clear any existing sidebar content
     st.sidebar.empty()
     
-    # Create three columns for the buttons
-    col1, col2, col3 = st.columns(3)
+    # Four columns for the buttons
+    col1, col2, col3, col4 = st.columns(4)
     
     with col1:
         if st.button("🎤 Speech Recognition", use_container_width=True):
             st.session_state.page = "speech"
             st.rerun()
-    
     with col2:
         if st.button("👋 Sign Language", use_container_width=True):
             st.session_state.page = "sign_language"
             st.rerun()
-            
     with col3:
         if st.button("💬 Text Chat", use_container_width=True):
             st.session_state.page = "chat"
             st.rerun()
+    with col4:
+        if st.button("🖼️ Visual Aid", use_container_width=True):
+            st.session_state.page = "visual_aid"
+            st.rerun()
     
-    # Add some space
     st.markdown("<br><br>", unsafe_allow_html=True)
-    
-    # Add description of features
     with st.expander("ℹ️ About the Features"):
         st.markdown("""
         - **🎤 Speech Recognition**: Convert your speech to text in real-time
         - **👋 Sign Language**: Detect sign language using your webcam or upload a video
         - **💬 Two-Person Chat**: Enable text-based communication between two people using the same device
+        - **🖼️ Visual Aid**: Select pictograms to visually communicate messages
         """)
 
 def transcribe_audio_file(audio_file, client):
@@ -574,8 +573,83 @@ st.markdown("""
     <style>
     [data-testid="stSidebar"], [data-testid="stSidebarNav"] {display: none !important;}
     [data-testid="collapsedControl"] {display: none !important;}
+    .visual-aid-img {
+        border: 3px solid transparent;
+        border-radius: 12px;
+        transition: border-color 0.2s;
+        cursor: pointer;
+        margin-bottom: 8px;
+    }
+    .visual-aid-img.selected {
+        border-color: #2196F3;
+        box-shadow: 0 0 8px #2196F3;
+    }
+    .visual-aid-category {
+        font-size: 1.2em;
+        font-weight: bold;
+        margin-bottom: 0.5em;
+    }
     </style>
 """, unsafe_allow_html=True)
+
+
+def visual_aid_page():
+    import glob
+    st.title("🖼️ Visual Aid - Pictogram Board")
+    
+    # Back button
+    if st.button("⬅️ Back to Main Menu", key="visualaid_back", use_container_width=True):
+        st.session_state.page = "main"
+        st.rerun()
+
+    pictograms_dir = os.path.join(os.getcwd(), "Pictograms")
+    categories = ["CommonRequests", "Feelings", "Numbers"]
+    category_labels = ["Common Requests", "Feelings", "Numbers"]
+    cat_map = dict(zip(categories, category_labels))
+
+    if 'visual_aid_category' not in st.session_state:
+        st.session_state.visual_aid_category = categories[0]
+    if 'visual_aid_selected' not in st.session_state:
+        st.session_state.visual_aid_selected = None
+
+    # --- Category selection as buttons ---
+    st.markdown('<div class="visual-aid-category">Select a category:</div>', unsafe_allow_html=True)
+    cat_cols = st.columns(len(categories))
+    for i, (cat, label) in enumerate(zip(categories, category_labels)):
+        if cat_cols[i].button(label, key=f"catbtn_{cat}", use_container_width=True):
+            st.session_state.visual_aid_category = cat
+            st.session_state.visual_aid_selected = None
+
+    selected_category = st.session_state.visual_aid_category
+
+    # List images in the selected category
+    category_path = os.path.join(pictograms_dir, selected_category)
+    image_files = []
+    for ext in ("*.jpg", "*.jpeg", "*.png", "*.webp", "*.svg"):
+        image_files.extend(glob.glob(os.path.join(category_path, ext)))
+    image_files = sorted(image_files)
+
+    if not image_files:
+        st.warning("No pictograms found in this category.")
+        return
+
+    # Show all pictograms as buttons, using full filename for unique keys
+    st.markdown('<div class="visual-aid-category">Select a pictogram:</div>', unsafe_allow_html=True)
+    cols = st.columns(4)
+    for idx, img_path in enumerate(image_files):
+        col = cols[idx % 4]
+        img_name = os.path.splitext(os.path.basename(img_path))[0]
+        img_file = os.path.basename(img_path)
+        # Button with unique key using full filename
+        if col.button(img_name, key=f"picbtn_{selected_category}_{img_file}", use_container_width=True):
+            st.session_state.visual_aid_selected = img_path
+
+    # Show the selected image below, centered and large
+    if st.session_state.visual_aid_selected:
+        st.markdown("<div style='text-align:center; margin-top:2em;'>", unsafe_allow_html=True)
+        st.image(st.session_state.visual_aid_selected, use_container_width=False, width=350)
+        st.markdown("</div>", unsafe_allow_html=True)
+        st.success("This pictogram is selected for communication.")
 
 def main():
     # Initialize session state for page navigation
@@ -591,6 +665,8 @@ def main():
         sign_language_page()
     elif st.session_state.page == "chat":
         chat_interface()
+    elif st.session_state.page == "visual_aid":
+        visual_aid_page()
 
 def run_webcam(conf_threshold, iou_threshold, frame_skip):
     # Load the model
