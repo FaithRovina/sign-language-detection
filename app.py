@@ -32,21 +32,54 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS to adjust the main content width
+# --- GLOBAL CSS FOR CONSISTENT FONTS AND LAYOUT ---
 st.markdown("""
     <style>
-    .main .block-container {
-        padding-top: 2rem;
-        padding-bottom: 2rem;
+    html, body, [class^='css'] {
+        font-family: 'Segoe UI', 'Roboto', 'Arial', sans-serif !important;
+        font-size: 20px !important;
+        color: #222 !important;
     }
-    .stButton>button {
-        width: 100%;
-        padding: 10px;
-        margin: 5px 0;
+    .stTextInput input, .stTextArea textarea, .stButton button, .stTabs [data-baseweb="tab"], .stSelectbox label, .stSelectbox div[data-baseweb="select"] {
+        font-size: 20px !important;
+        font-family: 'Segoe UI', 'Roboto', 'Arial', sans-serif !important;
     }
-    .stVideo {
-        max-width: 100% !important;
+    .block-container {
+        max-width: 900px;
+        margin-left: auto;
+        margin-right: auto;
+        padding-top: 2.5em;
+        padding-bottom: 2em;
     }
+    .instructions-block {
+        background: #f1f3f6;
+        border-radius: 12px;
+        padding: 1.5em;
+        margin-bottom: 1.5em;
+        font-size: 22px !important;
+        color: #222;
+    }
+    .visual-aid-category {
+        font-size: 1.2em;
+        font-weight: bold;
+        margin-bottom: 0.5em;
+        margin-top: 1em;
+        text-align: center;
+    }
+    @media (max-width: 600px) {
+        .block-container {
+            max-width: 98vw !important;
+            padding: 0.5em !important;
+        }
+        .stSelectbox label, .stSelectbox div[data-baseweb="select"] {
+            font-size: 1.1em !important;
+        }
+        img {
+            max-width: 98vw !important;
+            height: auto !important;
+        }
+    }
+    </style>
     """, unsafe_allow_html=True)
 
 # Global model options will be set in their respective pages
@@ -185,23 +218,28 @@ def chat_interface():
     if 'show_help' not in st.session_state:
         st.session_state.show_help = False
     
-    # Help toggle button
-    if st.button("❓ Help"):
-        st.session_state.show_help = not st.session_state.show_help
-    
-    # Display help information
-    if st.session_state.show_help:
-        with st.expander("How to use this chat"):
-            st.markdown("""
-            **Instructions for Two-Person Chat**
-            
-            1. **Person 1** and **Person 2** take turns using this device
-            2. The current speaker is highlighted in blue
-            3. Type your message and press Enter or click Send
-            4. Click "Switch Speaker" to change turns
-            5. Use the "Clear Chat" button to start a new conversation
-            6. Click "❓" again to hide these instructions
-            """)
+    # --- Custom Help/Instructions Toggle ---
+    if 'show_instructions' not in st.session_state:
+        st.session_state.show_instructions = False
+
+    help_col, _ = st.columns([1, 8])
+    with help_col:
+        if st.button('❓', key='chat_help_toggle', help='Show/Hide Instructions', use_container_width=False):
+            st.session_state.show_instructions = not st.session_state.show_instructions
+
+    if st.session_state.show_instructions:
+        st.markdown(
+            '''<div class="instructions-block">
+            <b>How to Use:</b><br>
+            - <b>Two-Person Chat:</b> Person 1 and Person 2 take turns using this device.<br>
+            - <b>Current Speaker:</b> The current speaker is highlighted.<br>
+            - <b>Type Message:</b> Type your message and press Enter or click Send.<br>
+            - <b>Switch Speaker:</b> Click "Switch Speaker" to change turns.<br>
+            - <b>Clear Chat:</b> Use the "Clear Chat" button to start a new conversation.<br>
+            Click the ❓ again to hide these instructions.
+            </div>''',
+            unsafe_allow_html=True
+        )
     
     # Display chat messages with speaker indicators
     st.markdown("---")
@@ -313,29 +351,24 @@ def chat_interface():
 
 def main_menu():
     st.title("Accessibility Assistant")
+    st.markdown("<div style='font-size:1.1em; margin-bottom:1.5em; color:#555; text-align:center;'>Making communication simple, accessible, and inclusive one sign, one gesture at a time.</div>", unsafe_allow_html=True)
     st.write("Choose a mode to get started:")
     
     st.sidebar.empty()
     
-    # Four columns for the buttons
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        if st.button("🎤 Speech Recognition", use_container_width=True):
-            st.session_state.page = "speech"
-            st.rerun()
-    with col2:
-        if st.button("👋 Sign Language", use_container_width=True):
-            st.session_state.page = "sign_language"
-            st.rerun()
-    with col3:
-        if st.button("💬 Text Chat", use_container_width=True):
-            st.session_state.page = "chat"
-            st.rerun()
-    with col4:
-        if st.button("🖼️ Visual Aid", use_container_width=True):
-            st.session_state.page = "visual_aid"
-            st.rerun()
+    # Four columns for the buttons (equal width)
+    cols = st.columns(4)
+    button_labels = [
+        ("🎤 Speech Recognition", "speech"),
+        ("👋 Sign Language", "sign_language"),
+        ("💬 Text Chat", "chat"),
+        ("🖼️ Visual Aid", "visual_aid")
+    ]
+    for i, (label, page) in enumerate(button_labels):
+        with cols[i]:
+            if st.button(label, use_container_width=True, key=f"mainbtn_{page}"):
+                st.session_state.page = page
+                st.rerun()
     
     st.markdown("<br><br>", unsafe_allow_html=True)
     with st.expander("ℹ️ About the Features"):
@@ -345,6 +378,7 @@ def main_menu():
         - **💬 Two-Person Chat**: Enable text-based communication between two people using the same device
         - **🖼️ Visual Aid**: Select pictograms to visually communicate messages
         """)
+
 
 def transcribe_audio_file(audio_file, client):
     try:
@@ -596,7 +630,9 @@ st.markdown("""
 def visual_aid_page():
     import glob
     st.title("🖼️ Visual Aid - Pictogram Board")
-    
+    st.markdown('<div class="visual-aid-category">Select a pictogram category and view the image below.</div>', unsafe_allow_html=True)
+    st.markdown("<hr>", unsafe_allow_html=True)
+
     # Back button
     if st.button("⬅️ Back to Main Menu", key="visualaid_back", use_container_width=True):
         st.session_state.page = "main"
@@ -633,18 +669,20 @@ def visual_aid_page():
         st.warning("No pictograms found in this category.")
         return
 
-    # Show pictogram names in a dropdown (selectbox)
-    st.markdown('<div class="visual-aid-category">Select a pictogram:</div>', unsafe_allow_html=True)
-    names = [os.path.splitext(os.path.basename(f))[0] for f in image_files]
-    name_to_path = {os.path.splitext(os.path.basename(f))[0]: f for f in image_files}
+    # Spread out the content using columns
+    col_left, col_center, col_right = st.columns([1,2,1])
+    with col_center:
+        st.markdown('<div class="visual-aid-category">Select a pictogram:</div>', unsafe_allow_html=True)
+        names = [os.path.splitext(os.path.basename(f))[0] for f in image_files]
+        name_to_path = {os.path.splitext(os.path.basename(f))[0]: f for f in image_files}
+        selected_name = st.selectbox("Pictogram Name", names, key=f"picdropdown_{selected_category}")
+        st.session_state.visual_aid_selected = name_to_path[selected_name]
 
-    selected_name = st.selectbox("Pictogram Name", names, key=f"picdropdown_{selected_category}")
-    st.session_state.visual_aid_selected = name_to_path[selected_name]
-
-    # Show the selected image below, centered and large
+    st.markdown("<br>", unsafe_allow_html=True)
+    # Show the selected image in the center, with more vertical spacing
     if st.session_state.visual_aid_selected:
-        st.markdown("<div style='text-align:center; margin-top:2em;'>", unsafe_allow_html=True)
-        st.image(st.session_state.visual_aid_selected, use_container_width=False, width=350)
+        st.markdown("<div style='display:flex; justify-content:center; align-items:center; margin-top:2em; margin-bottom:2em;'>", unsafe_allow_html=True)
+        st.image(st.session_state.visual_aid_selected, use_container_width=True)
         st.markdown("</div>", unsafe_allow_html=True)
         st.success("This pictogram is selected for communication.")
 
