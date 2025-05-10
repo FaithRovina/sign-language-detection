@@ -1,28 +1,28 @@
 import pathlib
 import platform
-import json
-import os
-from google.oauth2 import service_account
-from google.cloud import speech
+import requests
+import base64
 import sounddevice as sd
 import queue
 import threading
-import numpy as np
 import streamlit as st
+import torch
+import numpy as np
+import os
+
+# Load secrets for TTS and Speech APIs
+GOOGLE_APPLICATION_CREDENTIALS = st.secrets.get("GOOGLE_APPLICATION_CREDENTIALS", None)
+GOOGLE_SPEECH_API_KEY = st.secrets.get("GOOGLE_SPEECH_API_KEY", None)
+TTS_API_KEY = st.secrets.get("TTS_API_KEY", None)
 
 # Fix for Windows path issue
 if platform.system() == 'Windows':
     pathlib.PosixPath = pathlib.WindowsPath
 
-import streamlit as st
-import torch
 import cv2
-import numpy as np
 from PIL import Image
 import tempfile
-import os
 import time
-import torch
 
 # Set page config with larger layout
 st.set_page_config(
@@ -87,15 +87,19 @@ confidence_threshold = 0.25
 iou_threshold = 0.45
 
 # Initialize Google Cloud Speech client
-def get_speech_client():
-    try:
-        credentials_path = r"C:\Users\faith\Downloads\speechtotext.json"
-        credentials = service_account.Credentials.from_service_account_file(credentials_path)
-        client = speech.SpeechClient(credentials=credentials)
-        return client
-    except Exception as e:
-        st.error(f"Error initializing speech client: {str(e)}")
-        return None
+import tempfile
+import json
+
+# No longer needed: using REST API with API key
+
+# Template for using TTS API credentials from secrets
+# tts_creds_json = st.secrets["TTS_API_KEY"]
+# with tempfile.NamedTemporaryFile(delete=False, suffix=".json", mode="w") as tmp:
+#     tmp.write(tts_creds_json)
+#     tmp.flush()
+#     tts_credentials_path = tmp.name
+# Use tts_credentials_path as needed for TTS API clients
+
 
 # Audio recording parameters
 RATE = 16000
@@ -192,17 +196,28 @@ def process_frame(frame, confidence_threshold=0.40, iou_threshold=0.45):
         return frame  # Return original frame if processing fails
 
 # Main app
-def transcribe_audio(audio_data, client):
+def transcribe_audio(audio_data):
     try:
-        audio = speech.RecognitionAudio(content=audio_data.tobytes())
-        config = speech.RecognitionConfig(
-            encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
-            sample_rate_hertz=RATE,
-            language_code="en-US",
-            enable_automatic_punctuation=True,
-        )
-        response = client.recognize(config=config, audio=audio)
-        return ' '.join([result.alternatives[0].transcript for result in response.results])
+        api_key = st.secrets["GOOGLE_SPEECH_API_KEY"]
+        audio_content = base64.b64encode(audio_data.tobytes()).decode("utf-8")
+        url = f"https://speech.googleapis.com/v1/speech:recognize?key={api_key}"
+        data = {
+            "config": {
+                "encoding": "LINEAR16",
+                "sampleRateHertz": RATE,
+                "languageCode": "en-US",
+                "enableAutomaticPunctuation": True
+            },
+            "audio": {
+                "content": audio_content
+            }
+        }
+        response = requests.post(url, json=data)
+        result = response.json()
+        if "results" in result:
+            return " ".join([alt["transcript"] for r in result["results"] for alt in r["alternatives"]])
+        else:
+            return f"Error: {result.get('error', {}).get('message', 'Unknown error')}"
     except Exception as e:
         st.error(f"Error in live audio transcription: {str(e)}")
         return ""
@@ -380,80 +395,70 @@ def main_menu():
         """)
 
 
-def transcribe_audio_file(audio_file, client):
+def transcribe_audio_file(audio_file):
     try:
-        # Read the audio file
-        audio_content = audio_file.read()
-        
-        # Check file type and set encoding
+        api_key = st.secrets["GOOGLE_SPEECH_API_KEY"]
         file_extension = audio_file.name.split('.')[-1].lower()
-        
-        # Map common audio formats to their respective encodings
         encoding_map = {
-            'wav': speech.RecognitionConfig.AudioEncoding.LINEAR16,
-            'flac': speech.RecognitionConfig.AudioEncoding.FLAC,
-            'mp3': speech.RecognitionConfig.AudioEncoding.MP3,
-            'ogg': speech.RecognitionConfig.AudioEncoding.OGG_OPUS,
+            'wav': 'LINEAR16',
+            'flac': 'FLAC',
+            'mp3': 'MP3',
+            'ogg': 'OGG_OPUS',
         }
-        
-        # Default to LINEAR16 if format not recognized
-        encoding = encoding_map.get(file_extension, speech.RecognitionConfig.AudioEncoding.ENCODING_UNSPECIFIED)
-        
-        # Create audio object
-        audio = speech.RecognitionAudio(content=audio_content)
-        
-        # Create config
-        config = speech.RecognitionConfig(
-            encoding=encoding,
-            sample_rate_hertz=RATE,
-            language_code="en-US",
-            enable_automatic_punctuation=True,
-        )
-        
-        # Make the API request
-        response = client.recognize(config=config, audio=audio)
-        
-        # Combine all results
-        return ' '.join([result.alternatives[0].transcript for result in response.results])
+        encoding = encoding_map.get(file_extension, 'ENCODING_UNSPECIFIED')
+        audio_content = base64.b64encode(audio_file.read()).decode("utf-8")
+        url = f"https://speech.googleapis.com/v1/speech:recognize?key={api_key}"
+        data = {
+            "config": {
+                "encoding": encoding,
+                "sampleRateHertz": RATE,
+                "languageCode": "en-US",
+                "enableAutomaticPunctuation": True
+            },
+            "audio": {
+                "content": audio_content
+            }
+        }
+        response = requests.post(url, json=data)
+        result = response.json()
+        if "results" in result:
+            return " ".join([alt["transcript"] for r in result["results"] for alt in r["alternatives"]])
+        else:
+            return f"Error: {result.get('error', {}).get('message', 'Unknown error')}"
     except Exception as e:
         st.error(f"Error in file transcription: {str(e)}")
         return ""
 
-def transcribe_audio_file(audio_file, client):
+def transcribe_audio_file(audio_file):
     try:
-        # Read the audio file
-        audio_content = audio_file.read()
-        
-        # Check file type and set encoding
+        api_key = st.secrets["GOOGLE_SPEECH_API_KEY"]
         file_extension = audio_file.name.split('.')[-1].lower()
-        
-        # Map common audio formats to their respective encodings
         encoding_map = {
-            'wav': speech.RecognitionConfig.AudioEncoding.LINEAR16,
-            'flac': speech.RecognitionConfig.AudioEncoding.FLAC,
-            'mp3': speech.RecognitionConfig.AudioEncoding.MP3,
-            'ogg': speech.RecognitionConfig.AudioEncoding.OGG_OPUS,
+            'wav': 'LINEAR16',
+            'flac': 'FLAC',
+            'mp3': 'MP3',
+            'ogg': 'OGG_OPUS',
         }
-        
-        # Default to LINEAR16 if format not recognized
-        encoding = encoding_map.get(file_extension, speech.RecognitionConfig.AudioEncoding.ENCODING_UNSPECIFIED)
-        
-        # Create audio object
-        audio = speech.RecognitionAudio(content=audio_content)
-        
-        # Create config
-        config = speech.RecognitionConfig(
-            encoding=encoding,
-            sample_rate_hertz=RATE,
-            language_code="en-US",
-            enable_automatic_punctuation=True,
-        )
-        
-        # Make the API request
-        response = client.recognize(config=config, audio=audio)
-        
-        # Combine all results
-        return ' '.join([result.alternatives[0].transcript for result in response.results])
+        encoding = encoding_map.get(file_extension, 'ENCODING_UNSPECIFIED')
+        audio_content = base64.b64encode(audio_file.read()).decode("utf-8")
+        url = f"https://speech.googleapis.com/v1/speech:recognize?key={api_key}"
+        data = {
+            "config": {
+                "encoding": encoding,
+                "sampleRateHertz": RATE,
+                "languageCode": "en-US",
+                "enableAutomaticPunctuation": True
+            },
+            "audio": {
+                "content": audio_content
+            }
+        }
+        response = requests.post(url, json=data)
+        result = response.json()
+        if "results" in result:
+            return " ".join([alt["transcript"] for r in result["results"] for alt in r["alternatives"]])
+        else:
+            return f"Error: {result.get('error', {}).get('message', 'Unknown error')}"
     except Exception as e:
         st.error(f"Error in file transcription: {str(e)}")
         return ""
@@ -521,7 +526,8 @@ def speech_page():
         st.rerun()
     
     # Initialize speech client
-    speech_client = get_speech_client()
+        # Always get a fresh speech client with credentials from secrets
+    # No client needed for REST API
     
     # Initialize recorder if not exists
     if 'recorder' not in st.session_state:
@@ -551,9 +557,9 @@ def speech_page():
             if st.button("⏹️ Stop Recording", key="stop_recording"):
                 if 'recording_started' in st.session_state and st.session_state.recording_started:
                     audio_data = st.session_state.recorder.stop_recording()
-                    if speech_client is not None and len(audio_data) > 0:
+                    if len(audio_data) > 0:
                         with st.spinner('Transcribing...'):
-                            st.session_state.transcription = transcribe_audio(audio_data, speech_client)
+                            st.session_state.transcription = transcribe_audio(audio_data)
                     st.session_state.recording_started = False
                     st.toast('Recording stopped', icon='⏹️')
     
@@ -565,19 +571,21 @@ def speech_page():
         
         if uploaded_file is not None:
             if st.button("Transcribe Audio File", key="transcribe_file"):
-                if speech_client is not None:
-                    with st.spinner('Transcribing file...'):
-                        st.session_state.transcription = transcribe_audio_file(uploaded_file, speech_client)
+                with st.spinner('Transcribing file...'):
+                    st.session_state.transcription = transcribe_audio_file(uploaded_file)
     
     # Display transcription
     st.subheader("Transcription")
-    st.text_area("Transcription", 
-                value=st.session_state.transcription, 
-                height=200,)
-
+    # If the transcription is an error message (starts with 'Error:'), show it as an error and clear the text area
+    if isinstance(st.session_state.transcription, str) and st.session_state.transcription.strip().startswith("Error:"):
+        st.error(st.session_state.transcription)
+        st.text_area("Transcription", value="", height=200, key="transcription_text_area")
+    else:
+        st.text_area("Transcription", value=st.session_state.transcription, height=200, key="transcription_text_area")
 
 
 def sign_language_page():
+
     st.title("👋 Sign Language Detection")
     
     # Add back button
