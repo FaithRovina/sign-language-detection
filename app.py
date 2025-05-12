@@ -120,16 +120,25 @@ class AudioRecorder:
     def start_recording(self):
         self.is_recording = True
         self.recording = []
-        self.stream = sd.InputStream(
-            samplerate=RATE,
-            channels=1,
-            dtype='int16',
-            callback=self.callback
-        )
-        self.stream.start()
-        # Start processing thread
-        self.thread = threading.Thread(target=self.process_queue, daemon=True)
-        self.thread.start()
+        try:
+            self.stream = sd.InputStream(
+                samplerate=RATE,
+                channels=1,
+                dtype='int16',
+                callback=self.callback,
+                device=None  # Use system default input device
+            )
+            self.stream.start()
+            # Start processing thread
+            self.thread = threading.Thread(target=self.process_queue, daemon=True)
+            self.thread.start()
+        except Exception as e:
+            st.error("Could not access microphone. This feature is only available on local machines with a microphone.")
+            self.is_recording = False
+            self.recording = []
+            self.stream = None
+            self.thread = None
+
 
     def stop_recording(self):
         self.is_recording = False
@@ -579,55 +588,64 @@ def speech_page():
         if st.button("Translate to Sign", key="translate_to_sign"):
             transcript = st.session_state.transcription
             if transcript:
-                import glob, json
-                app_dir = os.path.dirname(os.path.abspath(__file__))
-                # Load optional mapping file
-                mapping_path = os.path.join(app_dir, 'sign_mapping.json')
-                custom_map = {}
-                if os.path.exists(mapping_path):
-                    try:
-                        with open(mapping_path, 'r', encoding='utf-8') as f:
-                            custom_map = json.load(f)
-                    except Exception as e:
-                        st.warning(f"Could not load mapping file: {e}")
-                # Build file maps for sign_videos and pictograms
-                sign_videos_dir = os.path.join(app_dir, 'sign_videos')
-                pictograms_dir = os.path.join(app_dir, 'Pictograms')
-                word_to_file = {}
-                # Scan sign_videos
-                for file in glob.glob(os.path.join(sign_videos_dir, '*')):
-                    key = os.path.splitext(os.path.basename(file))[0].replace('_', ' ').replace('-', ' ').lower()
-                    word_to_file[key] = file
-                # Scan pictograms (all subfolders)
-                for root, dirs, files in os.walk(pictograms_dir):
-                    for file in files:
-                        key = os.path.splitext(file)[0].replace('_', ' ').replace('-', ' ').lower()
-                        word_to_file[key] = os.path.join(root, file)
-                # Merge custom map (overrides)
-                for k, v in custom_map.items():
-                    word_to_file[k.lower()] = os.path.join(app_dir, v) if not os.path.isabs(v) else v
-                # Process transcript
-                words = transcript.split()
-                for word in words:
-                    key = word.lower().strip(",.?!")
-                    file_path = word_to_file.get(key)
-                    if file_path and os.path.exists(file_path):
-                        ext = os.path.splitext(file_path)[1].lower()
-                        if ext in [".mp4", ".mov", ".avi", ".webm"]:
-                            st.video(file_path)
-                        elif ext in [".jpg", ".jpeg", ".png", ".gif", ".svg", ".webp"]:
-                            st.image(file_path, caption=word)
+                        if len(audio_data) > 0:
+                            with st.spinner('Transcribing...'):
+                                st.session_state.transcription = transcribe_audio(audio_data)
+                        st.session_state.recording = False
+            
+            # Translate to Sign button (next to Stop Recording)
+            if st.button("Translate to Sign", key="translate_to_sign"):
+                transcript = st.session_state.transcription
+                if transcript:
+                    import glob, json
+                    app_dir = os.path.dirname(os.path.abspath(__file__))
+                    # Load optional mapping file
+                    mapping_path = os.path.join(app_dir, 'sign_mapping.json')
+                    custom_map = {}
+                    if os.path.exists(mapping_path):
+                        try:
+                            with open(mapping_path, 'r', encoding='utf-8') as f:
+                                custom_map = json.load(f)
+                        except Exception as e:
+                            st.warning(f"Could not load mapping file: {e}")
+                    # Build file maps for sign_videos and pictograms
+                    sign_videos_dir = os.path.join(app_dir, 'sign_videos')
+                    pictograms_dir = os.path.join(app_dir, 'Pictograms')
+                    word_to_file = {}
+                    # Scan sign_videos
+                    for file in glob.glob(os.path.join(sign_videos_dir, '*')):
+                        key = os.path.splitext(os.path.basename(file))[0].replace('_', ' ').replace('-', ' ').lower()
+                        word_to_file[key] = file
+                    # Scan pictograms (all subfolders)
+                    for root, dirs, files in os.walk(pictograms_dir):
+                        for file in files:
+                            key = os.path.splitext(file)[0].replace('_', ' ').replace('-', ' ').lower()
+                            word_to_file[key] = os.path.join(root, file)
+                    # Merge custom map (overrides)
+                    for k, v in custom_map.items():
+                        word_to_file[k.lower()] = os.path.join(app_dir, v) if not os.path.isabs(v) else v
+                    # Process transcript
+                    words = transcript.split()
+                    for word in words:
+                        key = word.lower().strip(",.?!")
+                        file_path = word_to_file.get(key)
+                        if file_path and os.path.exists(file_path):
+                            ext = os.path.splitext(file_path)[1].lower()
+                            if ext in [".mp4", ".mov", ".avi", ".webm"]:
+                                st.video(file_path)
+                            elif ext in [".jpg", ".jpeg", ".png", ".gif", ".svg", ".webp"]:
+                                st.image(file_path, caption=word)
+                            else:
+                                st.warning(f"Unsupported file type for: {word}")
                         else:
-                            st.warning(f"Unsupported file type for: {word}")
-                    else:
-                        st.error(f"No sign found for: {word}")
+                            st.error(f"No sign found for: {word}")
 
-        st.subheader("Transcription")
-        if isinstance(st.session_state.transcription, str) and st.session_state.transcription.strip().startswith("Error:"):
-            st.error(st.session_state.transcription)
-            st.text_area("Recording/Upload Transcription", value="", height=150, key="recording_transcription_box_tab1")
-        else:
-            st.text_area("Recording/Upload Transcription", value=st.session_state.transcription, height=150, key="recording_transcription_box_tab1")
+            st.subheader("Transcription")
+            if isinstance(st.session_state.transcription, str) and st.session_state.transcription.strip().startswith("Error:"):
+                st.error(st.session_state.transcription)
+                st.text_area("Recording/Upload Transcription", value="", height=150, key="recording_transcription_box_tab1")
+            else:
+                st.text_area("Recording/Upload Transcription", value=st.session_state.transcription, height=150, key="recording_transcription_box_tab1")
 
     with tab2:
         st.write("Upload an audio file for transcription (supports WAV, MP3, FLAC, OGG):")
