@@ -1,5 +1,4 @@
 import streamlit as st
-import websockets
 import asyncio
 import base64
 import json
@@ -49,42 +48,9 @@ def run_realtime_transcription():
     st.markdown('### 🎙️ Real-Time Transcription')
 
     if st.session_state['run']:
-        async def send_receive():
-            URL = f"wss://api.assemblyai.com/v2/realtime/ws?sample_rate={RATE}"
-            try:
-                async with websockets.connect(
-                    URL,
-                    additional_headers={'Authorization': st.secrets['api_key']},
-                    ping_interval=5,
-                    ping_timeout=20
-                ) as _ws:
-                    await asyncio.sleep(0.1)
-                    await _ws.recv()
-                    async def send():
-                        while st.session_state['run']:
-                            try:
-                                data = stream.read(FRAMES_PER_BUFFER)
-                                data = base64.b64encode(data).decode("utf-8")
-                                json_data = json.dumps({"audio_data":str(data)})
-                                await _ws.send(json_data)
-                            except Exception as e:
-                                break
-                            await asyncio.sleep(0.01)
-                    async def receive():
-                        while st.session_state['run']:
-                            try:
-                                result_str = await _ws.recv()
-                                result = json.loads(result_str)['text']
-                                if json.loads(result_str)['message_type']=='FinalTranscript':
-                                    st.session_state['text'] = result
-                                    with open('transcription.txt', 'a') as transcription_txt:
-                                        transcription_txt.write(st.session_state['text'] + ' ')
-                            except Exception as e:
-                                break
-                    await asyncio.gather(send(), receive())
-            except Exception as e:
-                st.error(f"WebSocket error: {e}")
-        asyncio.run(send_receive())
+        # Real-time transcription logic removed due to websocket removal.
+        # Placeholder for future implementation.
+        st.info('Real-time transcription is currently unavailable in this version.')
 
     # Always display transcript area
     st.text_area("Live Transcription", value=st.session_state['text'], height=350)
