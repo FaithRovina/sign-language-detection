@@ -215,7 +215,10 @@ def transcribe_audio(audio_data):
         response = requests.post(url, json=data)
         result = response.json()
         if "results" in result:
-            return " ".join([alt["transcript"] for r in result["results"] for alt in r["alternatives"]])
+            try:
+                return " ".join([alt["transcript"] for r in result["results"] for alt in r["alternatives"] if "transcript" in alt])
+            except Exception:
+                return "Error: Transcription received, but no transcript found in response."
         else:
             return f"Error: {result.get('error', {}).get('message', 'Unknown error')}"
     except Exception as e:
