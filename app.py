@@ -538,22 +538,15 @@ def speech_page():
         st.session_state.transcription = ""
     
     # Tab layout for different input methods
-    from realtime_audio import run_realtime_transcription
-    tab1, tab2, tab3 = st.tabs(["🎤 Record Audio", "📁 Upload Audio File", "🟢 Live Transcription"])
+    tab1, tab2 = st.tabs(["🎤 Record Audio", "📁 Upload Audio File"])
 
     # Track the active tab in session state
     if 'active_speech_tab' not in st.session_state:
         st.session_state.active_speech_tab = 0
 
     # Tab switching logic to reset unused variables
-    current_tab = 0 if tab1 else (1 if tab2 else 2)
+    current_tab = 0 if tab1 else 1
     if st.session_state.active_speech_tab != current_tab:
-        if current_tab == 2:
-            st.session_state.transcription = ""
-            st.session_state.recording = False
-        else:
-            st.session_state.rt_transcript = ""
-            st.session_state.rt_running = False
         st.session_state.active_speech_tab = current_tab
 
     with tab1:
@@ -626,7 +619,13 @@ def speech_page():
                     else:
                         st.error(f"No sign found for: {word}")
 
-    
+        st.subheader("Transcription")
+        if isinstance(st.session_state.transcription, str) and st.session_state.transcription.strip().startswith("Error:"):
+            st.error(st.session_state.transcription)
+            st.text_area("Recording/Upload Transcription", value="", height=150, key="recording_transcription_box_tab1")
+        else:
+            st.text_area("Recording/Upload Transcription", value=st.session_state.transcription, height=150, key="recording_transcription_box_tab1")
+
     with tab2:
         st.write("Upload an audio file for transcription (supports WAV, MP3, FLAC, OGG):")
         uploaded_file = st.file_uploader("Choose an audio file", 
@@ -637,29 +636,13 @@ def speech_page():
             if st.button("Transcribe Audio File", key="transcribe_file"):
                 with st.spinner('Transcribing file...'):
                     st.session_state.transcription = transcribe_audio_file(uploaded_file)
-    
-    # Only show transcription for recording/upload tabs
-    # Only show transcription for recording/upload tabs
-    with tab1:
-        st.subheader("Transcription")
-        if isinstance(st.session_state.transcription, str) and st.session_state.transcription.strip().startswith("Error:"):
-            st.error(st.session_state.transcription)
-            st.text_area("Recording/Upload Transcription", value="", height=150, key="recording_transcription_box_tab1")
-        else:
-            st.text_area("Recording/Upload Transcription", value=st.session_state.transcription, height=150, key="recording_transcription_box_tab1")
 
-    with tab2:
         st.subheader("Transcription")
         if isinstance(st.session_state.transcription, str) and st.session_state.transcription.strip().startswith("Error:"):
             st.error(st.session_state.transcription)
             st.text_area("Recording/Upload Transcription", value="", height=150, key="recording_transcription_box_tab2")
         else:
             st.text_area("Recording/Upload Transcription", value=st.session_state.transcription, height=150, key="recording_transcription_box_tab2")
-
-    # Only show live transcription in the live tab
-    with tab3:
-        run_realtime_transcription()
-
 
 
 def sign_language_page():
