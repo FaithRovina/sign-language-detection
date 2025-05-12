@@ -48,61 +48,6 @@ def run_realtime_transcription():
     # Web user interface
     st.markdown('### 🎙️ Real-Time Transcription')
 
-    with st.expander('About this Feature'):
-        st.markdown('''
-        This tab uses the AssemblyAI API to perform real-time transcription.
-        
-        Libraries used:
-        - `streamlit` - web framework
-        - `pyaudio` - a Python library providing bindings to [PortAudio](http://www.portaudio.com/) (cross-platform audio processing library)
-        - `websockets` - allows interaction with the API
-        - `asyncio` - allows concurrent input/output processing
-        - `base64` - encode/decode audio data
-        - `json` - allows reading of AssemblyAI audio output in JSON format
-        ''')
-
-    col1, col2 = st.columns(2)
-    col1.button('Start', on_click=start_listening)
-    col2.button('Stop', on_click=stop_listening)
-
-    # Send audio (Input) / Receive transcription (Output)
-    async def send_receive():
-        URL = f"wss://api.assemblyai.com/v2/realtime/ws?sample_rate={RATE}"
-        try:
-            async with websockets.connect(
-                URL,
-                additional_headers={'Authorization': st.secrets['api_key']},
-                ping_interval=5,
-                ping_timeout=20
-            ) as _ws:
-                await asyncio.sleep(0.1)
-                await _ws.recv()
-                async def send():
-                    while st.session_state['run']:
-                        try:
-                            data = stream.read(FRAMES_PER_BUFFER)
-                            data = base64.b64encode(data).decode("utf-8")
-                            json_data = json.dumps({"audio_data":str(data)})
-                            await _ws.send(json_data)
-                        except Exception as e:
-                            break
-                        await asyncio.sleep(0.01)
-                async def receive():
-                    while st.session_state['run']:
-                        try:
-                            result_str = await _ws.recv()
-                            result = json.loads(result_str)['text']
-                            if json.loads(result_str)['message_type']=='FinalTranscript':
-                                st.session_state['text'] = result
-                                st.write(st.session_state['text'])
-                                with open('transcription.txt', 'a') as transcription_txt:
-                                    transcription_txt.write(st.session_state['text'] + ' ')
-                        except Exception as e:
-                            break
-                await asyncio.gather(send(), receive())
-        except Exception as e:
-            st.error(f"WebSocket error: {e}")
-
     if st.session_state['run']:
         async def send_receive():
             URL = f"wss://api.assemblyai.com/v2/realtime/ws?sample_rate={RATE}"
