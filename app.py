@@ -646,29 +646,24 @@ def speech_page():
 
 
 def sign_language_page():
-
     st.title("👋 Sign Language Detection")
-    
+
     # Add back button
     if st.button("⬅️ Back to Main Menu", key="back_btn", use_container_width=True):
         st.session_state.page = "main"
         st.rerun()
 
-    # --- Main page controls ---
-    st.markdown("<h3 style='font-size:1.5em;'>Model Options</h3>", unsafe_allow_html=True)
-    confidence_threshold = st.slider("Confidence Threshold", 0.0, 1.0, 0.25, 0.01, key="conf_thresh_sign")
-    iou_threshold = st.slider("IOU Threshold", 0.0, 1.0, 0.45, 0.01, key="iou_thresh_sign")
-    frame_skip = st.slider("Frame Skip", 1, 5, 2, 1, help="Process every nth frame to improve performance", key="frame_skip_sign")
-    
-    st.markdown("<h3 style='font-size:1.5em;'>Input Source</h3>", unsafe_allow_html=True)
+    # Only show input source tabs, no extra sliders
     app_mode = st.radio("Choose input source:", ["Webcam", "Upload Video"], key="input_source", horizontal=True)
-    
+
     if app_mode == "Webcam":
         st.header("Webcam Live Feed")
-        run_webcam(confidence_threshold, iou_threshold, frame_skip)
+        # Use default or optimized settings for faster load (frame size 320x240)
+        run_webcam()
     else:
         st.header("Upload Video")
-        run_video_upload(confidence_threshold, iou_threshold, frame_skip)
+        run_video_upload()
+
 
 
 # Hide Streamlit sidebar and hamburger menu globally
@@ -772,58 +767,44 @@ def main():
     elif st.session_state.page == "visual_aid":
         visual_aid_page()
 
-def run_webcam(conf_threshold, iou_threshold, frame_skip):
-    # Load the model
+def run_webcam():
+    # Use reasonable defaults for a fast, clean interface
+    DEFAULT_CONFIDENCE = 0.25
+    DEFAULT_IOU = 0.45
+    FRAME_SKIP = 2  # Only process every 2nd frame for speed
+
     @st.cache_resource
     def load_model():
-        # Clear cache and force reload
         torch.hub._validate_not_a_forked_repo = lambda a, b, c: True
         model = torch.hub.load('ultralytics/yolov5', 'custom', path='best.pt', force_reload=True, trust_repo=True)
-        model.conf = conf_threshold
+        model.conf = DEFAULT_CONFIDENCE
+        model.iou = DEFAULT_IOU
         return model
-    
+
     model = load_model()
-    
+
     run = st.checkbox('Start Webcam', key='webcam_checkbox')
     FRAME_WINDOW = st.image([])
-    
+
     cap = cv2.VideoCapture(0)
-    
-    # Set camera properties for better performance
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+    # Set camera properties for faster load and lower latency
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 416)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 416)
     cap.set(cv2.CAP_PROP_FPS, 30)
-    
+
     frame_count = 0
-    fps = st.empty()
-    
     try:
         while run:
             start_time = time.time()
-            
             ret, frame = cap.read()
             if not ret:
                 st.error("Failed to capture video from webcam.")
                 break
-                
             frame_count += 1
-            
-            # Only process every nth frame
-            if frame_count % frame_skip == 0:
-                # Process frame with current thresholds
-                processed_frame = process_frame(frame, conf_threshold, iou_threshold)
-                
-                # Calculate and display FPS
-                fps_text = f"FPS: {1.0 / (time.time() - start_time):.1f}"
-                cv2.putText(processed_frame, fps_text, (10, 30), 
-                           cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-                
-                # Display the processed frame
+            if frame_count % FRAME_SKIP == 0:
+                processed_frame = process_frame(frame, DEFAULT_CONFIDENCE, DEFAULT_IOU)
                 FRAME_WINDOW.image(processed_frame, channels="BGR")
-            
-            # Add a small delay to prevent high CPU usage
             time.sleep(0.01)
-            
     except Exception as e:
         st.error(f"An error occurred: {str(e)}")
     finally:
@@ -831,56 +812,33 @@ def run_webcam(conf_threshold, iou_threshold, frame_skip):
         cv2.destroyAllWindows()
 
 
-def run_video_upload(conf_threshold, iou_threshold, frame_skip):
-    # Get current confidence and IOU thresholds from session state
-    conf_threshold = st.session_state.get('conf_thresh_sign', 0.25)
-    iou_threshold = st.session_state.get('iou_thresh_sign', 0.45)
-    
+
+def run_video_upload():
+    # Use reasonable defaults for a fast, clean interface
+    DEFAULT_CONFIDENCE = 0.25
+    DEFAULT_IOU = 0.45
+    DEFAULT_FPS = 40
+
     uploaded_file = st.file_uploader("Upload a video", type=["mp4", "mov", "avi"], key="video_uploader")
-    
-    # Initialize variables outside try block for finally
+
     cap = None
     temp_file_path = None
-    
     try:
         if uploaded_file is not None:
             # Create a temporary file with proper extension
-            file_ext = os.path.splitext(uploaded_file.name)[1]
-            with tempfile.NamedTemporaryFile(delete=False, suffix=file_ext) as tfile:
-                tfile.write(uploaded_file.getbuffer())
-                temp_file_path = tfile.name
-            
-            # Open video file
+            with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(uploaded_file.name)[-1]) as temp_file:
+                temp_file.write(uploaded_file.read())
+                temp_file_path = temp_file.name
             cap = cv2.VideoCapture(temp_file_path)
-            
-            if not cap.isOpened():
-                st.error("Error: Could not open video file.")
-                return
-                
-            # Get video properties
-            fps = cap.get(cv2.CAP_PROP_FPS)
-            if fps <= 0:
-                fps = 30  # Default FPS if not available
-            
-            # Create placeholders
-            frame_placeholder = st.empty()
-            stop_button = st.button("Stop Video")
-            
-            while cap.isOpened() and not stop_button:
+            FRAME_WINDOW = st.image([])
+            stop_button = st.button("Stop Video", key="stop_video_btn")
+            while cap.isOpened():
                 ret, frame = cap.read()
                 if not ret:
                     break
-                    
-                # Process frame with current thresholds
-                processed_frame = process_frame(frame, conf_threshold, iou_threshold)
-                
-                # Display the processed frame
-                frame_placeholder.image(processed_frame, channels="BGR")
-                
-                # Add a small delay to control playback speed
-                time.sleep(1.0 / fps)
-                
-                # Check if the stop button was pressed
+                processed_frame = process_frame(frame, DEFAULT_CONFIDENCE, DEFAULT_IOU)
+                FRAME_WINDOW.image(processed_frame, channels="BGR")
+                time.sleep(1.0 / 40)
                 if stop_button:
                     break
     
